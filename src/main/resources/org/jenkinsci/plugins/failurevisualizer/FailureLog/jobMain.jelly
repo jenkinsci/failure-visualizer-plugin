@@ -25,19 +25,7 @@ THE SOFTWARE.
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
     <j:if test="${it.build() != null}">
         <table style="margin-left: 1em;">
-            <tr>
-                <td><img style="margin-right: 1em;" src="${imagesURL}/48x48/terminal.png" alt=""/></td>
-                <td style="vertical-align: middle"><a href="./console">Console Log</a></td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>
-                    <pre class="console-output">
-                        <st:getOutput var="output" />
-                        <j:whitespace>${it.writeTo(output)}</j:whitespace>
-                    </pre>
-                </td>
-            </tr>
+            <st:include page="summary.jelly"/>
         </table>
     </j:if>
 </j:jelly>
