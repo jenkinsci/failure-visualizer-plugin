@@ -23,87 +23,71 @@
  */
 package org.jenkinsci.plugins.failurevisualizer;
 
-import hudson.Extension;
-import hudson.model.Action;
 import hudson.model.InvisibleAction;
 import hudson.model.Result;
-import hudson.model.TransientBuildActionFactory;
-import hudson.model.TransientProjectActionFactory;
-import hudson.model.AbstractBuild;
-import hudson.model.AbstractProject;
+import hudson.model.Job;
 import hudson.model.Run;
 
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 
 import org.apache.commons.jelly.XMLOutput;
 
-public class FailureLog extends InvisibleAction {
+public abstract class FailureLog extends InvisibleAction {
 
-	final public Run<?, ?> build;
+    public abstract Run<?, ?> build();
 
-	public FailureLog(final Run<?, ?> build) {
+    /**
+     * Write relevant part of the log.
+     */
+    public void writeTo(XMLOutput writer) throws IOException {
+        ArrayList<String> actualLines = new ArrayList<String>(30);
+        for (String line: build().getLog(30)) {
+            if (line.trim().isEmpty()) continue; // Skip empty line to save space
+            if (line.contains("Building ") && line.contains(" in workspace ")) {
+                // Try to detect start of the build
+                actualLines.clear();
+            }
 
-	    this.build = build;
-	}
+            actualLines.add(line);
 
-	/**
-	 * Write relevant part of the log.
-	 * @throws IOException
-	 */
-	public void writeTo(XMLOutput writer) throws IOException {
-	    ArrayList<String> actualLines = new ArrayList<String>(30);
-	    for (String line: build.getLog(30)) {
-	        if (line.trim().isEmpty()) continue; // Skip empty line to save space
-	        if (line.contains("Building ") && line.contains(" in workspace ")) {
-	            // Try to detect start of the build
-	            actualLines.clear();
-	        }
+            if (line.contains("' marked build as failure")) break; // End of build, the rest it not interesting
+        }
 
-	        actualLines.add(line);
-
-	        if (line.contains("' marked build as failure")) break; // End of build, the rest it not interesting
-	    }
-
-	    final Writer wrtr = writer.asWriter();
-	    for (String line: actualLines) {
-	        wrtr.write(line);
-	        wrtr.write('\n');
-	    }
-	}
-
-    @Extension
-    public static class ProjectFactory extends TransientProjectActionFactory {
-        @Override public Collection<? extends Action> createFor(
-                @SuppressWarnings("rawtypes") AbstractProject project
-        ) {
-            return actions(project.getLastCompletedBuild());
+        final Writer wrtr = writer.asWriter();
+        for (String line: actualLines) {
+            wrtr.write(line);
+            wrtr.write('\n');
         }
     }
 
-    @Extension
-    public static class BuildFactory extends TransientBuildActionFactory {
-        @Override public Collection<? extends Action> createFor(
-                @SuppressWarnings("rawtypes") AbstractBuild build
-        ) {
-            // For reason unknown to me summary.jelly contributed from transient
-            // actions are not shown, even after https://github.com/jenkinsci/jenkins/commit/f1a751f79dfbb975e4c436fd0967323e1ae7b8c6.
-            // Add permanent action when requested for the first time.
-            if (build.getAction(FailureLog.class) != null) return Collections.emptyList();
-            List<? extends Action> a = actions(build);
-            if (!a.isEmpty()) build.addAction(a.get(0));
-            return a;
+    public static class Build extends FailureLog {
+
+        private final Run<?, ?> build;
+
+        public Build(final Run<?, ?> build) {
+            this.build = build;
+        }
+
+        @Override
+        public Run<?, ?> build() {
+            return build;
         }
     }
 
-    private static List<? extends Action> actions(Run<?, ?> build) {
-        if (build == null || build.getResult() != Result.FAILURE) return Collections.emptyList();
+    public static class Project extends FailureLog {
 
-        return Arrays.asList(new FailureLog(build));
+        private final Job<?, ?> job;
+
+        public Project(final Job<?, ?> job) {
+            this.job = job;
+        }
+
+        @Override
+        public Run<?, ?> build() {
+            final Run<?, ?> last = job.getLastCompletedBuild();
+            return last == null || last.getResult() != Result.FAILURE ? null : last;
+        }
     }
 }
